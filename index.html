@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Molis AI · 风格探索</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #f5f1eb; color: #24324b; }
+  body { display: grid; place-items: center; font: 15px/1.7 -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif; -webkit-font-smoothing: antialiased; }
+  form { width: min(360px, calc(100vw - 48px)); }
+  .eyebrow { font-size: 12px; letter-spacing: .14em; color: #706d69; text-transform: uppercase; }
+  h1 { font: 400 34px/1.2 'Songti SC', 'STSong', 'Noto Serif SC', 'SimSun', Georgia, serif; margin: 12px 0 28px; }
+  input { width: 100%; box-sizing: border-box; font: inherit; font-size: 17px; color: inherit; background: transparent; border: 0; border-bottom: 1px solid #dcd6ce; padding: 10px 2px; outline: none; letter-spacing: .08em; }
+  input:focus { border-color: #24324b; }
+  button { margin-top: 22px; font: 500 14px/1.2 -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; padding: 11px 22px; border-radius: 99px; border: 0; background: #24324b; color: #f5f1eb; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .msg { min-height: 1.7em; margin-top: 14px; font-size: 13px; color: #706d69; }
+  .msg.err { color: #c8643c; }
+</style>
+</head>
+<body>
+<form id="f" autocomplete="off">
+  <div class="eyebrow">Molis AI · Style exploration</div>
+  <h1>风格探索 · 第 1 轮</h1>
+  <input id="p" type="password" placeholder="访问密码" aria-label="访问密码" autofocus>
+  <button id="b" type="submit">打开</button>
+  <div class="msg" id="m"></div>
+</form>
+<script type="module">
+const ITER = 310000, KEY = 'molis-mood-pass';
+const f = document.getElementById('f'), p = document.getElementById('p'), b = document.getElementById('b'), m = document.getElementById('m');
+const say = (t, err) => { m.textContent = t; m.className = 'msg' + (err ? ' err' : ''); };
+const payload = fetch('payload.bin').then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); });
+if (!('DecompressionStream' in window)) say('这个浏览器版本太旧，请换 Chrome、Safari 或 Edge 的新版本打开。', true);
+
+async function open(pass, remember) {
+  b.disabled = true; say('正在打开…');
+  try {
+    const buf = new Uint8Array(await payload);
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: buf.slice(0, 16), iterations: ITER, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    let zipped;
+    try { zipped = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: buf.slice(16, 28) }, key, buf.slice(28)); }
+    catch { localStorage.removeItem(KEY); b.disabled = false; say('密码不对，再试一次。', true); p.select(); return; }
+    const html = await new Response(new Blob([zipped]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    if (remember) localStorage.setItem(KEY, pass);
+    document.open(); document.write(html); document.close();
+  } catch (e) { b.disabled = false; say('载入失败，请刷新重试。（' + e.message + '）', true); }
+}
+f.onsubmit = e => { e.preventDefault(); if (p.value) open(p.value, true); };
+const saved = localStorage.getItem(KEY);
+if (saved) open(saved, true);
+</script>
+</body>
+</html>
